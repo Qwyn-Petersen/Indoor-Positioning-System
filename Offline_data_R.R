@@ -1,8 +1,7 @@
-readLines("C:/Users/risin/OneDrive/Desktop/offline.final.trace", n = 913)
+data_1<-readLines("C:/Users/risin/OneDrive/Desktop/offline.final.trace.txt", n = 913)
 data_1<- data_1[-(1:3)]
 head(data_1)
 library(stringr)
-
 
 break_1<-str_split(data_1[1],pattern = ";")
 key_info<-lapply(str_split(break_1[[1]][1:4],"="),"[[",2)
