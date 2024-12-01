@@ -56,12 +56,13 @@ anyNA(train)
 train_type <- train %>%
   mutate(across(c(time, posX, posY, posZ, orientation, signal, channel, type), ~ suppressWarnings(as.numeric(.))))
 
-# Selects only the data from the relevant access points
-MAC_addresses<-c("00:0f:a3:39:e1:c0","00:14:bf:b1:97:8a","00:14:bf:3b:c7:c6","00:14:bf:b1:97:90","00:14:bf:b1:97:8d","00:14:bf:b1:97:81")
-train_mac <- train_type %>% filter(mac %in% MAC_addresses)
+### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
+#---------------------------------------------------------------------------#
+
+#---------------------------------------------------------------------------#
 
 # Removes variables that provide redundant or no information
-train_no_scanMac <- train_mac %>% select(-scanMac,-posZ)
+train_no_scanMac <- train_type %>% select(-scanMac,-posZ)
 
 # Creates a function to convert the observations in the time variable from milliseconds to into POSIXct time format 
 posixct_func<- function(x){  
@@ -71,8 +72,35 @@ posixct_func<- function(x){
 # Creates a new data frame with with time converted into posixct format
 train_posixct <- train_no_scanMac %>% mutate(time = posixct_func(time))
 
+# Converts the accessPointLocations.txt file information into a table  
+mac_locs <- readr::read_table("accessPointLocations.txt")
 
-#
+# Stores the information from the Macs column in the mac_locs table
+MAC_addresses<-c(mac_locs$Macs)
+
+# Filters the data for instances of relevant access points only
+train_mac <- train_posixct %>% filter(mac %in% MAC_addresses)
+
+# renames the Macs column to match the data set
+colnames(mac_locs)[colnames(mac_locs) == "Macs"] <- "mac"
+
+# use inner join to find the matched data effectively adding x and y columns 
+train_access_points <- train_mac %>% 
+  inner_join(mac_locs, by = c("mac")) %>% 
+  select(
+    1:5,          # Keeps the first 5 columns in place
+    macX = x,     # Moves/renames the mac x coordinates to column 6 
+    macY = y,     # Moves/renames the mac y coordinates to column 7
+    everything()  # Moves everything else in order after that
+  )
+
+# Find the Euclidean distance between location of the device and access point
+dist <- sqrt((train_access_points$posX - train_access_points$macX)^2 + (train_access_points$posY - train_access_points$macY)^2)
+dist <- round(dist, digits = 2)
+# Add 'dist' column after the 6th column
+train_dist <- train_access_points %>%
+  add_column(dist = dist, .after = 7)
+
 
 ### MODIFY THE DATA FRAME AS NECESSARY
 ####
@@ -103,6 +131,53 @@ names(test) <- c("time","scanMac","posX","posY","posZ","orientation","mac","sign
 # Checks for any NA's in the data set
 anyNA(test)
 
+# Changes each variable to the correct type
+test_type <- test %>%
+  mutate(across(c(time, posX, posY, posZ, orientation, signal, channel, type), ~ suppressWarnings(as.numeric(.))))
 
+### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
+#---------------------------------------------------------------------------#
+
+#---------------------------------------------------------------------------#
+
+# Removes variables that provide redundant or no information
+test_no_scanMac <- test_type %>% select(-scanMac,-posZ)
+
+# Creates a function to convert the observations in the time variable from milliseconds to into POSIXct time format 
+posixct_func<- function(x){  
+  seconds<- x %/% 1000
+  date_time<-as.POSIXct(seconds, origin = "1970-01-01", tz = "GMT")
+}
+# Creates a new data frame with with time converted into posixct format
+test_posixct <- test_no_scanMac %>% mutate(time = posixct_func(time))
+
+# Converts the accessPointLocations.txt file information into a table  
+mac_locs <- readr::read_table("accessPointLocations.txt")
+
+# Stores the information from the Macs column in the mac_locs table
+MAC_addresses<-c(mac_locs$Macs)
+
+# Filters the data for instances of relevant access points only
+test_mac <- test_posixct %>% filter(mac %in% MAC_addresses)
+
+# renames the Macs column to match the data set
+colnames(mac_locs)[colnames(mac_locs) == "Macs"] <- "mac"
+
+# use inner join to find the matched data effectively adding x and y columns 
+test_access_points <- test_mac %>% 
+  inner_join(mac_locs, by = c("mac")) %>% 
+  select(
+    1:5,          # Keeps the first 5 columns in place
+    macX = x,     # Moves/renames the mac x coordinates to column 6 
+    macY = y,     # Moves/renames the mac y coordinates to column 7
+    everything()  # Moves everything else in order after that
+  )
+
+# Find the Euclidean distance between location of the device and access point
+dist <- sqrt((test_access_points$posX - test_access_points$macX)^2 + (test_access_points$posY - test_access_points$macY)^2)
+dist <- round(dist, digits = 2)
+# Add 'dist' column after the 6th column
+test_dist <- test_access_points %>%
+  add_column(dist = dist, .after = 7)
 
 
