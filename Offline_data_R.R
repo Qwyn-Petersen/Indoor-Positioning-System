@@ -1,3 +1,14 @@
+## LOADING AND FORMATTING THE OFFLINE DATA:
+
+# Installs and load the appropriate packages
+
+install.packages("dplyr")
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+
 # sets the current working directory
 setwd("C:/Users/risin/OneDrive/Desktop/School/Classes/STAT410/IPS_data")
 
@@ -36,6 +47,33 @@ str(train)
 # Assigns names to each of the columns
 names(train) <- c("time","scanMac","posX","posY","posZ","orientation","mac","signal","channel","type")
 
+## CLEANING THE OFFLINE DATA:
+
+# Checks for any NA's in the data set
+anyNA(train)
+
+# Changes each variable to the correct type
+train_type <- train %>%
+  mutate(across(c(time, posX, posY, posZ, orientation, signal, channel, type), ~ suppressWarnings(as.numeric(.))))
+
+# Selects only the data from the relevant access points
+MAC_addresses<-c("00:0f:a3:39:e1:c0","00:14:bf:b1:97:8a","00:14:bf:3b:c7:c6","00:14:bf:b1:97:90","00:14:bf:b1:97:8d","00:14:bf:b1:97:81")
+train_mac <- train_type %>% filter(mac %in% MAC_addresses)
+
+# Removes variables that provide redundant or no information
+train_no_scanMac <- train_mac %>% select(-scanMac,-posZ)
+
+# Creates a function to convert the observations in the time variable from milliseconds to into POSIXct time format 
+posixct_func<- function(x){  
+  seconds<- x %/% 1000
+  date_time<-as.POSIXct(seconds, origin = "1970-01-01", tz = "GMT")
+}
+# Creates a new data frame with with time converted into posixct format
+train_posixct <- train_no_scanMac %>% mutate(time = posixct_func(time))
+
+
+#
+
 ### MODIFY THE DATA FRAME AS NECESSARY
 ####
 #####
@@ -62,6 +100,8 @@ str(test)
 # Assigns names to each of the columns
 names(test) <- c("time","scanMac","posX","posY","posZ","orientation","mac","signal","channel","type")
 
+# Checks for any NA's in the data set
+anyNA(test)
 
 
 
