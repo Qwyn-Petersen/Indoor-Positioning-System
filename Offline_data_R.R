@@ -137,6 +137,7 @@ train_dist <- train_summary %>%
 #-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
 train <- train_dist
+print(train,n = 50, width = Inf)
 #-------------------------------------------------------------------------------#
 
 ### DO WE NEED TO NORMALIZE THE PREDICTOR VARIABLES??? (DIST IN THIS CASE) 
@@ -151,41 +152,36 @@ train <- train_dist
 
 # Loads the online.final.trace.txt into an object
 online_data <- readLines("online.final.trace.txt")
-
+#-------------------------------------------------------------------------------#
 # online_data is a character vector of length 6832
 str(online_data)
-
+#-------------------------------------------------------------------------------#
 # There are 240 comments in the data
 sum(substr(online_data,1,1) =="#")
-
+#-------------------------------------------------------------------------------#
 # Runs the porcessLine function over the entire data set to build a data frame
 lines <- online_data[substr(online_data,1,1) != "#"] # Removes comments from data
 tmp <- lapply(lines,processLine) 
 test <- as.data.frame(do.call("rbind",tmp), stringAsFactors=F)
-
+#-------------------------------------------------------------------------------#
 # Check dimensions of training set
 dim(test)
 head(test)
 str(test)
-
+#-------------------------------------------------------------------------------#
 # Assigns names to each of the columns
 names(test) <- c("time","scanMac","posX","posY","posZ","orientation","mac","signal","channel","type")
-
+#-------------------------------------------------------------------------------#
 # Checks for any NA's in the data set
 anyNA(test)
-
+#-------------------------------------------------------------------------------#
 # Changes each variable to the correct type
 test_type <- test %>%
   mutate(across(c(time, posX, posY, posZ, orientation, signal, channel, type), ~ suppressWarnings(as.numeric(.))))
-
-### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
-#---------------------------------------------------------------------------#
-
-#---------------------------------------------------------------------------#
-
+#-------------------------------------------------------------------------------#
 # Removes variables that provide redundant or no information
 test_no_scanMac <- test_type %>% select(-scanMac,-posZ)
-
+#-------------------------------------------------------------------------------#
 # Creates a function to convert the observations in the time variable from milliseconds to into POSIXct time format 
 posixct_func<- function(x){  
   seconds<- x %/% 1000
@@ -193,19 +189,19 @@ posixct_func<- function(x){
 }
 # Creates a new data frame with with time converted into posixct format
 test_posixct <- test_no_scanMac %>% mutate(time = posixct_func(time))
-
+#-------------------------------------------------------------------------------#
 # Converts the accessPointLocations.txt file information into a table  
 mac_locs <- readr::read_table("accessPointLocations.txt")
-
+#-------------------------------------------------------------------------------#
 # Stores the information from the Macs column in the mac_locs table
 MAC_addresses<-c(mac_locs$Macs)
-
+#-------------------------------------------------------------------------------#
 # Filters the data for instances of relevant access points only
 test_mac <- test_posixct %>% filter(mac %in% MAC_addresses)
-
+#-------------------------------------------------------------------------------#
 # renames the Macs column to match the data set
 colnames(mac_locs)[colnames(mac_locs) == "Macs"] <- "mac"
-
+#-------------------------------------------------------------------------------#
 # use inner join to find the matched data effectively adding x and y columns 
 test_access_points <- test_mac %>% 
   inner_join(mac_locs, by = c("mac")) %>% 
@@ -215,23 +211,25 @@ test_access_points <- test_mac %>%
     macY = y,     # Moves/renames the mac y coordinates to column 7
     everything()  # Moves everything else in order after that
   )
-
+#-------------------------------------------------------------------------------#
 # This function takes and an angle and locates its closest proximity to angles in the bin vector
 nearest_angle <- function(angle, bins) {
   bins[which.min(abs(angle %% 360 - bins))]
 }
 bins <- c(0, 45, 90, 135, 180, 225, 270, 315)
-
+#-------------------------------------------------------------------------------#
+### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
+#-------------------------------------------------------------------------------#
 # Applies the nearest_angle function to the orientation column and creates a group version of the orientation variable conformed to angles 0, 45, 90, 135, 180, 225, 270, 315.
 test_orientation <- test_access_points %>%
   mutate(adj_orient = sapply(orientation, nearest_angle, bins = bins)) %>% 
   select(
-      1:3,           # Keep the first three columns
-      adj_orient,    # Keep the new adj_orient column
-      everything()   # Keep all remaining columns
-    ) %>% 
+    1:3,           # Keep the first three columns
+    adj_orient,    # Keep the new adj_orient column
+    everything()   # Keep all remaining columns
+  ) %>% 
   select(-orientation)
-
+#-------------------------------------------------------------------------------#
 test_summary <- test_orientation %>%
   group_by(posX, posY, adj_orient, mac , macX, macY) %>%
   summarise(mean_signal = mean(signal, na.rm = TRUE),
@@ -250,14 +248,15 @@ test_summary <- test_orientation %>%
             .groups = "drop"  # Removes grouping from the resulting data frame
   )%>% 
   select(-min_signal,-max_signal,-IQR_signal,-Q1,-Q3,-IQR_min,-IQR_max)
-
+#-------------------------------------------------------------------------------#
 # Find the Euclidean distance between location of the device and access point
 dist <- sqrt((test_summary$posX - test_summary$macX)^2 + (test_summary$posY - test_summary$macY)^2)
 dist <- round(dist, digits = 2)
+#-------------------------------------------------------------------------------#
 # Add 'dist' column after the 6th column
 test_dist <- test_summary %>%
   add_column(dist = dist, .after = 7)
-
+#-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
 test <- test_dist
 print(test,n = 50, width = Inf)
@@ -265,6 +264,16 @@ print(test,n = 50, width = Inf)
 ## PREDICTION MODELING
 #_______________________________________________________________________________#
 
+train_S <- train %>% mutate(median_signal = -1 * median_signal)
+S <- train_S$median_signal
+
+nls_model <- nls(dist ~ a1 + a2 * log(S), start = list(a1 = 1, a2 = -1), data = train)
+
+nls_residuals <- residuals(model)
+
+nls_sd_resid <- sd(model1_residuals)
+
+#-------------------------------------------------------------------------------#
 # Load libraries
 install.packages("FNN")
 install.packages("caret")
@@ -272,21 +281,19 @@ library(FNN)
 library(caret)
 
 # Ensure train$signal and test$signal are matrices/data frames, not vectors
-train_signal <- as.data.frame(train$signal)
-test_signal <- as.data.frame(test$signal)
+train_signal <- as.data.frame(train$median_signal)
+test_signal <- as.data.frame(test$median_signal)
 
 # Train KNN model
-k <- 5
+k <- 9
 knn_model <- knn.reg(train = train_signal, test = test_signal, y = train$dist, k = k)
 
-y_predictions <- knn_model$pred
-y_values <- test$dist
-residuals <- y_values - y_predictions
+knn_y_predictions <- knn_model$pred
+knn_y_values <- test$dist
+knn_residuals <- knn_y_values - knn_y_predictions
 
-print(residuals)
+print(knn_residuals)
 
-plot(y_predictions,abs(residuals))
+plot(knn_y_predictions,abs(knn_residuals))
 
-residual_sum_squares <- sum((y_values - y_predictions)^2)
-print(residual_sum_squares)
-
+knn_sd_resid <- sd(knn_residuals)
