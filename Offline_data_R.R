@@ -139,7 +139,7 @@ plot(train_dist$median_signal, train_dist$dist, main = "Offline Distance vs Sign
 #-------------------------------------------------------------------------------#
 train_closestAPs <- train_dist %>%
   group_by(posX, posY, mac) %>%                 # Group by position and router
-  filter(mean_signal == max(mean_signal)) %>%   # Keep the recording with the strongest signal per router
+  filter(mean_signal == min(mean_signal)) %>%   # Keep the recording with the strongest signal per router
   ungroup() %>%                                 # Remove grouping to avoid interference
   group_by(posX, posY) %>%                      # Regroup by position
   arrange(dist, .by_group = TRUE) %>%           # Sort by distance
