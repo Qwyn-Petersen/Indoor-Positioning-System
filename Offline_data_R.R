@@ -1,5 +1,7 @@
 #_______________________________________________________________________________#
+#_______________________________________________________________________________#
 ## LOADING, FORMATTING, AND CLEANING THE OFFLINE DATA:
+#_______________________________________________________________________________#
 #_______________________________________________________________________________#
 
 # Installs and load the appropriate packages
@@ -99,13 +101,11 @@ bins <- c(0, 45, 90, 135, 180, 225, 270, 315)
 #-------------------------------------------------------------------------------#
 # Applies the nearest_angle function to the orientation column and creates a group version of the orientation variable conformed to angles 0, 45, 90, 135, 180, 225, 270, 315.
 train_orientation <- train_access_points %>%
-  mutate(adj_orient = sapply(orientation, nearest_angle, bins = bins)) %>% 
-  select(
-    1:3,           # Keep the first three columns
-    adj_orient,    # Keep the new adj_orient column
-    everything()   # Keep all remaining columns
-  ) %>% 
-  select(-orientation)
+  transmute(
+    across(1:3),                  # Retain the first three columns
+    adj_orient = sapply(orientation, nearest_angle, bins = bins),  # Create the new column
+    across(-orientation)          # Retain all other columns except 'orientation'
+  )
 #-------------------------------------------------------------------------------#
 # Consolidates useful information by groups and performs summary statistics   
 train_summary <- train_orientation %>%
@@ -135,19 +135,27 @@ dist <- round(dist, digits = 2)
 train_dist <- train_summary %>%
   add_column(dist = dist, .after = 7)
 #-------------------------------------------------------------------------------#
+plot(train_dist$median_signal, train_dist$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+#-------------------------------------------------------------------------------#
+train_closestAPs <- train_dist %>%
+  group_by(posX, posY, mac) %>%                 # Group by position and router
+  filter(mean_signal == max(mean_signal)) %>%   # Keep the recording with the strongest signal per router
+  ungroup() %>%                                 # Remove grouping to avoid interference
+  group_by(posX, posY) %>%                      # Regroup by position
+  arrange(dist, .by_group = TRUE) %>%           # Sort by distance
+  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
+  slice(1:3)      
+#-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
-train <- train_dist
+train <- train_closestAPs
 print(train,n = 50, width = Inf)
 #-------------------------------------------------------------------------------#
-
-### DO WE NEED TO NORMALIZE THE PREDICTOR VARIABLES??? (DIST IN THIS CASE) 
-#-------------------------------------------------------------------------------#
-#normalize <- function(x) (x - min(x)) / (max(x) - min(x))
-#train_macX_normalized <- as.data.frame(lapply(macX, normalize))
-#-------------------------------------------------------------------------------#
-
+# Plot the relationship between signal strength and distance
+plot(train$median_signal, train$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+#_______________________________________________________________________________#
 #_______________________________________________________________________________#
 ## LOADING, FORMATTING, AND CLEANING THE ONLINE DATA:
+#_______________________________________________________________________________#
 #_______________________________________________________________________________#
 
 # Loads the online.final.trace.txt into an object
@@ -222,13 +230,11 @@ bins <- c(0, 45, 90, 135, 180, 225, 270, 315)
 #-------------------------------------------------------------------------------#
 # Applies the nearest_angle function to the orientation column and creates a group version of the orientation variable conformed to angles 0, 45, 90, 135, 180, 225, 270, 315.
 test_orientation <- test_access_points %>%
-  mutate(adj_orient = sapply(orientation, nearest_angle, bins = bins)) %>% 
-  select(
-    1:3,           # Keep the first three columns
-    adj_orient,    # Keep the new adj_orient column
-    everything()   # Keep all remaining columns
-  ) %>% 
-  select(-orientation)
+  transmute(
+    across(1:3),                  # Retain the first three columns
+    adj_orient = sapply(orientation, nearest_angle, bins = bins),  # Create the new column
+    across(-orientation)          # Retain all other columns except 'orientation'
+  )
 #-------------------------------------------------------------------------------#
 test_summary <- test_orientation %>%
   group_by(posX, posY, adj_orient, mac , macX, macY) %>%
@@ -257,23 +263,35 @@ dist <- round(dist, digits = 2)
 test_dist <- test_summary %>%
   add_column(dist = dist, .after = 7)
 #-------------------------------------------------------------------------------#
+plot(train_dist$median_signal, train_dist$dist, main = "Online Distance vs Signal", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
+#-------------------------------------------------------------------------------#
+test_closestAPs <- test_dist %>%
+  group_by(posX, posY, mac) %>%                 # Group by position and router
+  filter(mean_signal == max(mean_signal)) %>%   # Keep the recording with the strongest signal per router
+  ungroup() %>%                                 # Remove grouping to avoid interference
+  group_by(posX, posY) %>%                      # Regroup by position
+  arrange(dist, .by_group = TRUE) %>%           # Sort by distance
+  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
+  slice(1:3)      
+#-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
-test <- test_dist
+test <- test_closestAPs
 print(test,n = 50, width = Inf)
+#-------------------------------------------------------------------------------#
+# Plots the new data frame with some noise removed from the data
+plot(train$median_signal, train$dist, main = "Online Distance vs Signal", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
+#_______________________________________________________________________________#
 #_______________________________________________________________________________#
 ## PREDICTION MODELING
 #_______________________________________________________________________________#
+#_______________________________________________________________________________#
 
-train_S <- train %>% mutate(median_signal = -1 * median_signal)
-S <- train_S$median_signal
-
-nls_model <- nls(dist ~ a1 + a2 * log(S), start = list(a1 = 1, a2 = -1), data = train)
-
-nls_residuals <- residuals(model)
-
-nls_sd_resid <- sd(model1_residuals)
-
+### DO WE NEED TO NORMALIZE THE PREDICTOR VARIABLES??? (DIST IN THIS CASE) 
 #-------------------------------------------------------------------------------#
+#normalize <- function(x) (x - min(x)) / (max(x) - min(x))
+#train_macX_normalized <- as.data.frame(lapply(macX, normalize))
+#-------------------------------------------------------------------------------#
+
 # Load libraries
 install.packages("FNN")
 install.packages("caret")
@@ -291,9 +309,24 @@ knn_model <- knn.reg(train = train_signal, test = test_signal, y = train$dist, k
 knn_y_predictions <- knn_model$pred
 knn_y_values <- test$dist
 knn_residuals <- knn_y_values - knn_y_predictions
+knn_sd_resid <- sd(knn_residuals)
 
 print(knn_residuals)
+print(knn_sd_resid)
 
 plot(knn_y_predictions,abs(knn_residuals))
+#-------------------------------------------------------------------------------#
 
-knn_sd_resid <- sd(knn_residuals)
+#train_S <- train %>% mutate(median_signal = -1 * median_signal)
+#S <- train_S$median_signal
+
+#nls_model <- nls(dist ~ a1 + a2 * log(S), start = list(a1 = 1, a2 = -1), data = train_S)
+
+#nls_residuals <- residuals(model)
+
+#nls_sd_resid <- sd(model1_residuals)
+
+
+#-------------------------------------------------------------------------------#
+
+
