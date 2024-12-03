@@ -95,9 +95,15 @@ train_access_points <- train_mac %>%
 #-------------------------------------------------------------------------------#
 # This function takes and an angle and locates its closest proximity to angles in the bin vector
 nearest_angle <- function(angle, bins) {
-  bins[which.min(abs(angle %% 360 - bins))]
+  
+  selected_val <- bins[which.min(abs(angle - bins))]
+  if(selected_val != 360){
+    return(selected_val)
+  } else{
+    return(0)
+  }
 }
-bins <- c(0, 45, 90, 135, 180, 225, 270, 315)
+bins <- c(0, 45, 90, 135, 180, 225, 270, 315, 360)
 #-------------------------------------------------------------------------------#
 # Applies the nearest_angle function to the orientation column and creates a group version of the orientation variable conformed to angles 0, 45, 90, 135, 180, 225, 270, 315.
 train_orientation <- train_access_points %>%
@@ -137,21 +143,64 @@ train_dist <- train_summary %>%
 #-------------------------------------------------------------------------------#
 plot(train_dist$median_signal, train_dist$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #-------------------------------------------------------------------------------#
-train_closestAPs <- train_dist %>%
-  group_by(posX, posY, mac) %>%                 # Group by position and router
-  filter(mean_signal == min(mean_signal)) %>%   # Keep the recording with the strongest signal per router
-  ungroup() %>%                                 # Remove grouping to avoid interference
+# Calculate the angle in radians from device to router
+angle <- atan2(train_dist$macY - train_dist$posY, train_dist$macX - train_dist$posX)
+# If desired, convert the angle to degrees
+angle <- angle * (180 / pi)
+# Adjust to ensure all angles are in the range 0-359 degrees
+angle <- (angle + 360) %% 360
+# Round to the 6th decimal place
+angle <- round(angle, digits = 2)
+train_angle <- data.frame(append(train_dist, list(angle = angle), after = 3))
+head(train_angle,48)
+#-------------------------------------------------------------------------------#
+train_angle_diff <- train_angle %>%
+  group_by(posX, posY, mac, adj_orient) %>%
+  # Step 2: Calculate the angular difference, considering the circular nature
+  mutate(
+    angle_diff = abs(adj_orient - angle),
+    # Correct for values greater than 180 degrees by subtracting from 360
+    angle_diff = ifelse(angle_diff > 180, 360 - angle_diff, angle_diff)) %>% 
+  select(
+    1:4,           # select the first 4 columns to be the first
+    angle_diff,    # moves angle_diff to the 5th column spot      
+    everything()   # Then adds the rest of the columns in order
+  )
+print(train_angle_diff, n = 30)
+
+# Checks to make sure there are no angle differences below zero or above 180, or NA values 
+unique_angle_diff<-unique(train_angle_diff$angle_diff)
+# Logical condition for values below 0, above 180, or NA
+invalid_cases <- unique_angle_diff < 0 | unique_angle_diff > 180 | is.na(unique_angle_diff)
+# Extract the problematic values
+problem_values <- unique_angle_diff[invalid_cases]
+print(problem_values)
+#-------------------------------------------------------------------------------#
+# Finds the unique combinations of locations and mac addressees 
+# where the device is pointing in the direction closest to the router/access point
+train_min_adiff <- train_angle_diff %>% 
+  group_by(posX,posY,mac) %>% 
+  summarise(
+  angle_diff = min(angle_diff),  # Find the minimum value for the angle difference
+  .groups = "drop"  # grouping is not necessary at this point
+)
+# Matches data from test_min_adiff and test_angle_diff so we have the data
+# we want all the columns we want
+train_improved_sig_accuracy<- train_angle_diff %>% semi_join(train_min_adiff)
+print(train_improved_sig_accuracy, n = 18)
+#-------------------------------------------------------------------------------#
+# Creates a new data frames showing the 3 closest access points associated with each location 
+train_closestAPs <- train_improved_sig_accuracy %>%
   group_by(posX, posY) %>%                      # Regroup by position
   arrange(dist, .by_group = TRUE) %>%           # Sort by distance
-  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
   slice(1:3)      
 #-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
-train <- train_closestAPs
-print(train,n = 50, width = Inf)
+train_final <- train_closestAPs
+print(train_final,n = 50, width = Inf)
 #-------------------------------------------------------------------------------#
 # Plot the relationship between signal strength and distance
-plot(train$median_signal, train$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+plot(train_final$median_signal, train_final$dist, main = "Offline Distance vs Signal \n (Noise Removed)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
 ## LOADING, FORMATTING, AND CLEANING THE ONLINE DATA:
@@ -222,9 +271,15 @@ test_access_points <- test_mac %>%
 #-------------------------------------------------------------------------------#
 # This function takes and an angle and locates its closest proximity to angles in the bin vector
 nearest_angle <- function(angle, bins) {
-  bins[which.min(abs(angle %% 360 - bins))]
+  
+  selected_val <- bins[which.min(abs(angle - bins))]
+  if(selected_val != 360){
+    return(selected_val)
+  } else{
+    return(0)
+  }
 }
-bins <- c(0, 45, 90, 135, 180, 225, 270, 315)
+bins <- c(0, 45, 90, 135, 180, 225, 270, 315, 360)
 #-------------------------------------------------------------------------------#
 ### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
 #-------------------------------------------------------------------------------#
@@ -263,23 +318,66 @@ dist <- round(dist, digits = 2)
 test_dist <- test_summary %>%
   add_column(dist = dist, .after = 7)
 #-------------------------------------------------------------------------------#
-plot(train_dist$median_signal, train_dist$dist, main = "Online Distance vs Signal", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
+plot(test_dist$median_signal, test_dist$dist, main = "Online Distance vs Signal", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
 #-------------------------------------------------------------------------------#
-test_closestAPs <- test_dist %>%
-  group_by(posX, posY, mac) %>%                 # Group by position and router
-  filter(mean_signal == max(mean_signal)) %>%   # Keep the recording with the strongest signal per router
-  ungroup() %>%                                 # Remove grouping to avoid interference
+# Calculate the angle in radians from device to router
+angle <- atan2(test_dist$macY - test_dist$posY, test_dist$macX - test_dist$posX)
+# If desired, convert the angle to degrees
+angle <- angle * (180 / pi)
+# Adjust to ensure all angles are in the range 0-359 degrees
+angle <- (angle + 360) %% 360
+# Round to the 6th decimal place
+angle <- round(angle, digits = 2)
+test_angle <- data.frame(append(test_dist, list(angle = angle), after = 3))
+head(test_angle,48)
+#-------------------------------------------------------------------------------#
+test_angle_diff <- test_angle %>%
+  group_by(posX, posY, mac, adj_orient) %>%
+  # Step 2: Calculate the angular difference, considering the circular nature
+  mutate(
+    angle_diff = abs(adj_orient - angle),
+    # Correct for values greater than 180 degrees by subtracting from 360
+    angle_diff = ifelse(angle_diff > 180, 360 - angle_diff, angle_diff)) %>% 
+  select(
+    1:4,           # select the first 4 columns to be the first
+    angle_diff,    # moves angle_diff to the 5th column spot      
+    everything()   # Then adds the rest of the columns in order
+  )
+print(test_angle_diff, n = 30)
+
+# Checks to make sure there are no angle differences below zero or above 180, or NA values 
+unique_angle_diff<-unique(test_angle_diff$angle_diff)
+# Logical condition for values below 0, above 180, or NA
+invalid_cases <- unique_angle_diff < 0 | unique_angle_diff > 180 | is.na(unique_angle_diff)
+# Extract the problematic values
+problem_values <- unique_angle_diff[invalid_cases]
+print(problem_values)
+#-------------------------------------------------------------------------------#
+# Finds the unique combinations of locations and mac addressees 
+# where the device is pointing in the direction closest to the router/access point
+test_min_adiff <- test_angle_diff %>% 
+  group_by(posX,posY,mac) %>% 
+  summarise(
+    angle_diff = min(angle_diff),  # Find the minimum value for the angle difference
+    .groups = "drop"  # grouping is not necessary at this point
+  )
+# Matches data from test_min_adiff and test_angle_diff so we have the data
+# we want all the columns we want
+test_improved_sig_accuracy <- test_angle_diff %>% semi_join(test_min_adiff)
+print(test_improved_sig_accuracy, n = 18)
+#-------------------------------------------------------------------------------#
+# Creates a new data frames showing the 3 closest access points associated with each location
+test_closestAPs <- test_improved_sig_accuracy %>%
   group_by(posX, posY) %>%                      # Regroup by position
   arrange(dist, .by_group = TRUE) %>%           # Sort by distance
-  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
   slice(1:3)      
 #-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
-test <- test_closestAPs
-print(test,n = 50, width = Inf)
+test_final <- test_closestAPs
+print(test_final,n = 50, width = Inf)
 #-------------------------------------------------------------------------------#
 # Plots the new data frame with some noise removed from the data
-plot(train$median_signal, train$dist, main = "Online Distance vs Signal", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
+plot(test_final$median_signal, test_final$dist, main = "Online Distance vs Signal \n (Noise Removed)", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
 ## PREDICTION MODELING
@@ -299,15 +397,15 @@ library(FNN)
 library(caret)
 
 # Ensure train$signal and test$signal are matrices/data frames, not vectors
-train_signal <- as.data.frame(train$median_signal)
-test_signal <- as.data.frame(test$median_signal)
+train_signal <- as.data.frame(train_final$median_signal)
+test_signal <- as.data.frame(test_final$median_signal)
 
 # Train KNN model
-k <- 9
-knn_model <- knn.reg(train = train_signal, test = test_signal, y = train$dist, k = k)
+k <- 13
+knn_model <- knn.reg(train = train_signal, test = test_signal, y = train_final$dist, k = k)
 
 knn_y_predictions <- knn_model$pred
-knn_y_values <- test$dist
+knn_y_values <- test_final$dist
 knn_residuals <- knn_y_values - knn_y_predictions
 knn_sd_resid <- sd(knn_residuals)
 
@@ -315,18 +413,15 @@ print(knn_residuals)
 print(knn_sd_resid)
 
 plot(knn_y_predictions,abs(knn_residuals))
-#-------------------------------------------------------------------------------#
-
-#train_S <- train %>% mutate(median_signal = -1 * median_signal)
-#S <- train_S$median_signal
-
-#nls_model <- nls(dist ~ a1 + a2 * log(S), start = list(a1 = 1, a2 = -1), data = train_S)
-
-#nls_residuals <- residuals(model)
-
-#nls_sd_resid <- sd(model1_residuals)
-
 
 #-------------------------------------------------------------------------------#
+
+
+
+
+
+
+
+
 
 
