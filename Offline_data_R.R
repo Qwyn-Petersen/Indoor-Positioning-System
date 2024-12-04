@@ -3,24 +3,19 @@
 ## LOADING, FORMATTING, AND CLEANING THE OFFLINE DATA:
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
-
-#Installs and load the appropriate packages
-install.packages("dplyr")
-library(dplyr)
-library(tidyr)
-library(tidyverse)
-library(ggplot2)
-library(magrittr)
-
+# Install once, only if packages are not already installed
+install.packages("tidyverse")  # Includes dplyr, tidyr, ggplot2, and magrittr
 install.packages("FNN")
 install.packages("caret")
-library(FNN)
-library(caret)
-
 install.packages("MASS")
 install.packages("pracma")
-library(MASS)  # For ginv
-library(pracma) # for pinv
+
+# Load libraries
+library(tidyverse)  # Loads dplyr, tidyr, ggplot2, magrittr
+library(FNN)
+library(caret)
+library(MASS)
+library(pracma)
 #-------------------------------------------------------------------------------#
 # sets the current working directory
 setwd("C:/Users/risin/OneDrive/Desktop/School/Classes/STAT410/IPS_data")
