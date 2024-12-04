@@ -4,21 +4,21 @@
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
 
-# Installs and load the appropriate packages
-#install.packages("dplyr")
+#Installs and load the appropriate packages
+install.packages("dplyr")
 library(dplyr)
 library(tidyr)
 library(tidyverse)
 library(ggplot2)
 library(magrittr)
 
-# install.packages("FNN")
-# install.packages("caret")
+install.packages("FNN")
+install.packages("caret")
 library(FNN)
 library(caret)
 
-# install.packages("MASS")
-# install.packages("pracma")
+install.packages("MASS")
+install.packages("pracma")
 library(MASS)  # For ginv
 library(pracma) # for pinv
 #-------------------------------------------------------------------------------#
