@@ -5,12 +5,22 @@
 #_______________________________________________________________________________#
 
 # Installs and load the appropriate packages
-install.packages("dplyr")
+#install.packages("dplyr")
 library(dplyr)
 library(tidyr)
 library(tidyverse)
 library(ggplot2)
 library(magrittr)
+
+# install.packages("FNN")
+# install.packages("caret")
+library(FNN)
+library(caret)
+
+# install.packages("MASS")
+# install.packages("pracma")
+library(MASS)  # For ginv
+library(pracma) # for pinv
 #-------------------------------------------------------------------------------#
 # sets the current working directory
 setwd("C:/Users/risin/OneDrive/Desktop/School/Classes/STAT410/IPS_data")
@@ -391,8 +401,8 @@ plot(test_final$median_signal, test_final$dist, main = "Online Distance vs Signa
 #-------------------------------------------------------------------------------#
 
 # Load libraries
-install.packages("FNN")
-install.packages("caret")
+# install.packages("FNN")
+# install.packages("caret")
 library(FNN)
 library(caret)
 
@@ -405,14 +415,83 @@ k <- 13
 knn_model <- knn.reg(train = train_signal, test = test_signal, y = train_final$dist, k = k)
 
 knn_y_predictions <- knn_model$pred
-knn_y_values <- test_final$dist
-knn_residuals <- knn_y_values - knn_y_predictions
-knn_sd_resid <- sd(knn_residuals)
 
-print(knn_residuals)
-print(knn_sd_resid)
+#knn_y_values <- test_final$dist
+#knn_residuals <- knn_y_values - knn_y_predictions
+#knn_sd_resid <- sd(knn_residuals)
 
-plot(knn_y_predictions,abs(knn_residuals))
+#print(knn_residuals)
+#print(knn_sd_resid)
+
+#plot(knn_y_predictions,abs(knn_residuals))
+#-------------------------------------------------------------------------------#
+test_final$pred_dist <- knn_y_predictions
+
+test_final <- test_final %>%
+  select(
+    1:10,
+    pred_dist,
+    everything()
+  )
+
+# Function to compute least squares solution using pseudoinverse
+compute_least_squares <- function(data) {
+  results <- list()  # To store results for each location
+  
+  # Group the data by posX and posY
+  grouped_data <- split(data, list(test_final$posX, test_final$posY))
+  
+  for (group in grouped_data) {
+    if (nrow(group) == 3) {  # Ensure there are exactly 3 rows per location
+      # Extract macX, macY, and distances
+      macX <- group$macX
+      macY <- group$macY
+      d <- group$pred_dist
+      
+      # Extract reference point (first router)
+      x1 <- macX[1]
+      y1 <- macY[1]
+      d1 <- d[1]
+      
+      # Extract second and third points
+      x2 <- macX[2]
+      y2 <- macY[2]
+      d2 <- d[2]
+      
+      x3 <- macX[3]
+      y3 <- macY[3]
+      d3 <- d[3]
+      
+      # Construct A matrix
+      A <- matrix(c(
+        2 * (x2 - x1), 2 * (y2 - y1),
+        2 * (x3 - x1), 2 * (y3 - y1)
+      ), nrow = 2, byrow = TRUE)
+      
+      # Construct b vector
+      b <- c(
+        (d1^2 - d2^2) + (x2^2 - x1^2) + (y2^2 - y1^2),
+        (d1^2 - d3^2) + (x3^2 - x1^2) + (y3^2 - y1^2)
+      )
+      
+      # Solve Ax = b using the normal equations: x = (A^T A)^(-1) A^T b
+      AtA_inv <- solve(t(A) %*% A)  # Compute (A^T A)^(-1)
+      Atb <- t(A) %*% b  # Compute A^T b
+      x <- AtA_inv %*% Atb  # Solve for x
+      
+      # Solve Ax = b using pseudoinverse
+      # x <- pinv(A) %*% b
+      # x <- ginv(A) %*% b
+      
+      # Save the computed coordinates
+      results <- append(results, list(list(posX = group$posX[1], posY = group$posY[1], x = x[1], y = x[2])))
+    }
+  }
+  
+  # Convert results to a data frame
+  results_df <- do.call(rbind, lapply(results, as.data.frame))
+  return(results_df)
+}
 
 #-------------------------------------------------------------------------------#
 
