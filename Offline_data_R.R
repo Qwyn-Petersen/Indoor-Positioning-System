@@ -4,18 +4,15 @@
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
 # Install once, only if packages are not already installed
-install.packages("tidyverse")  # Includes dplyr, tidyr, ggplot2, and magrittr
-install.packages("FNN")
-install.packages("caret")
-install.packages("MASS")
-install.packages("pracma")
+#install.packages("dplyr")
 
 # Load libraries
-library(tidyverse)  # Loads dplyr, tidyr, ggplot2, magrittr
-library(FNN)
-library(caret)
-library(MASS)
-library(pracma)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+
 #-------------------------------------------------------------------------------#
 # sets the current working directory
 setwd("C:/Users/risin/OneDrive/Desktop/School/Classes/STAT410/IPS_data")
@@ -394,10 +391,9 @@ plot(test_final$median_signal, test_final$dist, main = "Online Distance vs Signa
 #normalize <- function(x) (x - min(x)) / (max(x) - min(x))
 #train_macX_normalized <- as.data.frame(lapply(macX, normalize))
 #-------------------------------------------------------------------------------#
-
 # Load libraries
-# install.packages("FNN")
-# install.packages("caret")
+install.packages("FNN")
+install.packages("caret")
 library(FNN)
 library(caret)
 
@@ -420,6 +416,14 @@ knn_y_predictions <- knn_model$pred
 
 #plot(knn_y_predictions,abs(knn_residuals))
 #-------------------------------------------------------------------------------#
+
+## NOTE: MASS AND DYPLR HAVE CONFLICTS IN THEIR PACKAGES (ESP USING SELECTED FUNCTION)
+#install.packages("MASS") # for ginv
+#install.packages("pracma") # for pinv
+
+#library(MASS) # for ginv
+#library(pracma) # for pinv
+
 test_final$pred_dist <- knn_y_predictions
 
 test_final <- test_final %>%
