@@ -93,8 +93,6 @@ train_access_points <- train_mac %>%
     everything()  # Moves everything else in order after that
   )
 #-------------------------------------------------------------------------------#
-### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
-#-------------------------------------------------------------------------------#
 # This function takes and an angle and locates its closest proximity to angles in the bin vector
 nearest_angle <- function(angle, bins) {
   
@@ -392,8 +390,8 @@ plot(test_final$median_signal, test_final$dist, main = "Online Distance vs Signa
 #train_macX_normalized <- as.data.frame(lapply(macX, normalize))
 #-------------------------------------------------------------------------------#
 # Load libraries
-install.packages("FNN")
-install.packages("caret")
+# install.packages("FNN")
+# install.packages("caret")
 library(FNN)
 library(caret)
 
@@ -405,21 +403,31 @@ test_signal <- as.data.frame(test_final$median_signal)
 k <- 13
 knn_model <- knn.reg(train = train_signal, test = test_signal, y = train_final$dist, k = k)
 
+# Puts the predicted distances and the actual distance values into vectors
 knn_y_predictions <- knn_model$pred
+knn_y_values <- test_final$dist
 
-#knn_y_values <- test_final$dist
-#knn_residuals <- knn_y_values - knn_y_predictions
-#knn_sd_resid <- sd(knn_residuals)
+# calculates the residuals
+knn_residuals <- (knn_y_values - knn_y_predictions)^2
 
-#print(knn_residuals)
-#print(knn_sd_resid)
+# Compute RMSE directly
+rmse <- RMSE(knn_y_predictions, knn_y_values)
 
-#plot(knn_y_predictions,abs(knn_residuals))
+print(paste("RMSE for KNN model:", rmse))
+
+plot(
+  knn_residuals,                # Residuals are the y-values
+  xlab = "Observation Index",   # Label for the x-axis
+  ylab = "Residuals",           # Label for the y-axis
+  main = "Residuals Plot",      # Title for the plot
+  pch = 19,                     # Use solid circles for points
+  col = "blue"                  # Color of the points
+)
 #-------------------------------------------------------------------------------#
 
 ## NOTE: MASS AND DYPLR HAVE CONFLICTS IN THEIR PACKAGES (ESP USING SELECTED FUNCTION)
 #install.packages("MASS") # for ginv
-install.packages("pracma") # for pinv
+#install.packages("pracma") # for pinv
 
 #library(MASS) # for ginv
 library(pracma) # for pinv
@@ -433,7 +441,7 @@ test_final <- test_final %>%
     everything()
   )
 
-# Function to compute least squares solution using pseudoinverse
+# Function to compute least squares solution (pinv and ginv when A is singular)
 compute_least_squares <- function(data) {
   results <- list()  # To store results for each location
   
@@ -497,8 +505,52 @@ compute_least_squares <- function(data) {
   return(results_df)
 }
 
-loc_oredictions <- compute_least_squares(test_final)
-sd(loc_oredictions$dist)
+#-------------------------------------------------------------------------------#
+### CAN I CALCULATE THE RMSE FOR BOTH X AND Y LIKE THIS??
+#-------------------------------------------------------------------------------#
+
+# Function to calculate RMSE
+compute_rmse <- function(results_df) {
+  # Calculate the squared differences
+  squared_diff <- (results_df$predX - results_df$posX)^2 + (results_df$predY - results_df$posY)^2
+  
+  # Compute the mean of squared differences
+  mse <- mean(squared_diff)
+  
+  # Take the square root to get RMSE
+  rmse <- sqrt(mse)
+  
+  return(rmse)
+}
+
+# Get the location predictions of the least squares model
+results_df <- compute_least_squares(test_final)
+
+# Apply the function on your results_df
+rmse <- compute_rmse(results_df)
+
+# Print the RMSE
+print(paste("The RMSE of the least squares method is:", round(rmse, 2)))
+
+# Create a long data frame for easy plotting
+df_long <- data.frame(
+  x = c(results_df$posX, results_df$predX),
+  y = c(results_df$posY, results_df$predY),
+  Type = rep(c("Observed", "Predicted"), each = nrow(df))
+)
+
+# Create a scatter plot
+ggplot(df_long, aes(x = x, y = y, color = Type)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(
+    title = "Observed vs. Predicted Coordinates",
+    x = "X Coordinate",
+    y = "Y Coordinate",
+    color = "Type"
+  ) +
+  scale_color_manual(values = c("Observed" = "blue", "Predicted" = "red")) + # Custom colors
+  theme_minimal()
+
 #-------------------------------------------------------------------------------#
 
 
