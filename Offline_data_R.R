@@ -419,10 +419,10 @@ knn_y_predictions <- knn_model$pred
 
 ## NOTE: MASS AND DYPLR HAVE CONFLICTS IN THEIR PACKAGES (ESP USING SELECTED FUNCTION)
 #install.packages("MASS") # for ginv
-#install.packages("pracma") # for pinv
+install.packages("pracma") # for pinv
 
 #library(MASS) # for ginv
-#library(pracma) # for pinv
+library(pracma) # for pinv
 
 test_final$pred_dist <- knn_y_predictions
 
@@ -474,24 +474,31 @@ compute_least_squares <- function(data) {
       )
       
       # Solve Ax = b using the normal equations: x = (A^T A)^(-1) A^T b
-      AtA_inv <- solve(t(A) %*% A)  # Compute (A^T A)^(-1)
-      Atb <- t(A) %*% b  # Compute A^T b
-      x <- AtA_inv %*% Atb  # Solve for x
+      #AtA_inv <- solve(t(A) %*% A)  # Compute (A^T A)^(-1)
+      #Atb <- t(A) %*% b  # Compute A^T b
+      #x <- AtA_inv %*% Atb  # Solve for x
       
       # Solve Ax = b using pseudoinverse
-      # x <- pinv(A) %*% b
+      x <- pinv(A) %*% b
       # x <- ginv(A) %*% b
       
       # Save the computed coordinates
-      results <- append(results, list(list(posX = group$posX[1], posY = group$posY[1], x = x[1], y = x[2])))
-    }
+      results <- append(results, list(list(posX = group$posX[1], posY = group$posY[1], predX = x[1], predY = x[2])))
+    
+      } 
   }
-  
   # Convert results to a data frame
   results_df <- do.call(rbind, lapply(results, as.data.frame))
+  
+  # Calculate the Euclidean distance between the predicted and actual points
+  results_df$dist <- sqrt((results_df$posX - results_df$predX)^2 + (results_df$posY - results_df$predY)^2)
+  results_df$dist <- round(results_df$dist, digits = 2)
+  
   return(results_df)
 }
 
+loc_oredictions <- compute_least_squares(test_final)
+sd(loc_oredictions$dist)
 #-------------------------------------------------------------------------------#
 
 
