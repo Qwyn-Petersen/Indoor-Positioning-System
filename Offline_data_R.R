@@ -113,8 +113,16 @@ train_orientation <- train_access_points %>%
     across(-orientation)          # Retain all other columns except 'orientation'
   )
 #-------------------------------------------------------------------------------#
+# Find the Euclidean distance between location of the device and access point
+dist <- sqrt((train_orientation$posX - train_orientation$macX)^2 + (train_orientation$posY - train_orientation$macY)^2)
+dist <- round(dist, digits = 2)
+#-------------------------------------------------------------------------------#
+# Add 'dist' column after the 6th column
+train_dist <- train_orientation %>%
+  add_column(dist = dist, .after = 7)
+#-------------------------------------------------------------------------------#
 # Consolidates useful information by groups and performs summary statistics   
-train_summary <- train_orientation %>%
+train_summary <- train_dist %>%
   group_by(posX, posY, adj_orient, mac , macX, macY) %>%
   summarise(mean_signal = mean(signal, na.rm = TRUE),
             median_signal = median(signal, na.rm = TRUE),
@@ -132,16 +140,6 @@ train_summary <- train_orientation %>%
             .groups = "drop"  # Removes grouping from the resulting data frame
   )%>% # Removes information no longer needed after getting the ouliers
   select(-min_signal,-max_signal,-IQR_signal,-Q1,-Q3,-IQR_min,-IQR_max)
-#-------------------------------------------------------------------------------#
-# Find the Euclidean distance between location of the device and access point
-dist <- sqrt((train_summary$posX - train_summary$macX)^2 + (train_summary$posY - train_summary$macY)^2)
-dist <- round(dist, digits = 2)
-#-------------------------------------------------------------------------------#
-# Add 'dist' column after the 6th column
-train_dist <- train_summary %>%
-  add_column(dist = dist, .after = 7)
-#-------------------------------------------------------------------------------#
-plot(train_dist$median_signal, train_dist$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #-------------------------------------------------------------------------------#
 # Calculate the angle in radians from device to router
 angle <- atan2(train_dist$macY - train_dist$posY, train_dist$macX - train_dist$posX)
@@ -190,16 +188,36 @@ train_improved_sig_accuracy<- train_angle_diff %>% semi_join(train_min_adiff)
 print(train_improved_sig_accuracy, n = 18)
 #-------------------------------------------------------------------------------#
 # Creates a new data frames showing the 3 closest access points associated with each location 
-train_closestAPs <- train_improved_sig_accuracy %>%
+train_closestAPs_facing_router <- train_improved_sig_accuracy %>%
   group_by(posX, posY) %>%                      # Regroup by position
   arrange(dist, .by_group = TRUE) %>%           # Sort by distance
   slice(1:3)      
 #-------------------------------------------------------------------------------#
-# Rewrites the new information over the original testing data for ease of code
-train_final <- train_closestAPs
-print(train_final,n = 50, width = Inf)
+# Step 1: Get unique groupings from train_closestAPs_facing_router
+unique_groupings <- train_closestAPs_facing_router %>%
+  select(posX, posY, dist) %>%
+  distinct()
+# Step 2: Filter rows in Data Frame A based on unique groupings
+train_closestAPs_any_orient <- train_dist %>%
+  inner_join(unique_groupings, by = c("posX", "posY","dist"))
+# View result
+print(train_closestAPs_any_orient, n = 30)
 #-------------------------------------------------------------------------------#
-# Plot the relationship between signal strength and distance
+# Rewrites the new information over the original testing data for ease of code
+train_final1 <- train_dist
+train_final2 <- train_closestAPs_any_orient
+train_final3 <- train_closestAPs_facing_router
+#head(train_final1,n = 5, width = Inf)
+#head(train_final2,n = 5,width = Inf)
+#head(train_final3,n = 5,width = Inf)
+#-------------------------------------------------------------------------------#
+# Plot the relationship between signal strength and distance for the entire data set
+plot(train_dist$signal, train_dist$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+#-------------------------------------------------------------------------------#
+# Plot the relationship between signal strength and distance when noise is removed (for all orientations)
+plot(train_closestAPs_any_orient$signal, train_closestAPs_any_orient$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+#-------------------------------------------------------------------------------#
+# Plot the relationship between signal strength and distance when noise is removed (and the when device is pointed at the router)
 plot(train_final$median_signal, train_final$dist, main = "Offline Distance vs Signal \n (Noise Removed)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
