@@ -281,8 +281,6 @@ nearest_angle <- function(angle, bins) {
 }
 bins <- c(0, 45, 90, 135, 180, 225, 270, 315, 360)
 #-------------------------------------------------------------------------------#
-### DO I NEED TO CHANGE THE ORIENTATION COLUMN? WOULD IT THROW THINGS OFF?? ###
-#-------------------------------------------------------------------------------#
 # Applies the nearest_angle function to the orientation column and creates a group version of the orientation variable conformed to angles 0, 45, 90, 135, 180, 225, 270, 315.
 test_orientation <- test_access_points %>%
   transmute(
@@ -532,25 +530,12 @@ rmse <- compute_rmse(results_df)
 # Print the RMSE
 print(paste("The RMSE of the least squares method is:", round(rmse, 2)))
 
-# Create a long data frame for easy plotting
-df_long <- data.frame(
-  x = c(results_df$posX, results_df$predX),
-  y = c(results_df$posY, results_df$predY),
-  Type = rep(c("Observed", "Predicted"), each = nrow(df))
-)
+coord_df <- results_df %>% mutate(loc_coord = paste0("(", posX, ", ", posY, ")"))
 
-# Create a scatter plot
-ggplot(df_long, aes(x = x, y = y, color = Type)) +
-  geom_point(size = 3, alpha = 0.7) +
-  labs(
-    title = "Observed vs. Predicted Coordinates",
-    x = "X Coordinate",
-    y = "Y Coordinate",
-    color = "Type"
-  ) +
-  scale_color_manual(values = c("Observed" = "blue", "Predicted" = "red")) + # Custom colors
-  theme_minimal()
-
+ggplot(coord_df, aes(x = coord_df$loc_coord, y = coord_df$dist)) +
+  geom_point(color = "green") +
+  geom_boxplot()+
+  theme(axis.text.x = element_text(angle = 90))# Set angle to 90 degrees (Vertical)
 #-------------------------------------------------------------------------------#
 
 
