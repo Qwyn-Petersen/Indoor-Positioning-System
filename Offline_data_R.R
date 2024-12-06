@@ -318,30 +318,6 @@ test_dist <- test_orientation %>%
   add_column(dist = dist, .after = 7)
 #-------------------------------------------------------------------------------#
 # Creates a new data frames showing the 3 closest access points associated with each location 
-# choosing the orientation that produces the strongest signal! 
-test_closestAPs_max <- test_dist %>%
-  group_by(posX, posY, mac) %>%                 # Group by position and router
-  filter(signal == max(signal)) %>%   # Keep the recording with the strongest signal per router
-  ungroup() %>%                                 # Remove grouping to avoid interference
-  group_by(posX, posY) %>%                      # Regroup by position
-  arrange(dist, .by_group = TRUE) %>%           # Sort by distance
-  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
-  slice(1:3)  
-#head(test_closestAPs_max)
-#-------------------------------------------------------------------------------#
-# Creates a new data frames showing the 3 closest access points associated with each location 
-# choosing the orientation that produces the weakest signal! 
-test_closestAPs_min <- test_dist %>%
-  group_by(posX, posY, mac) %>%                 # Group by position and router
-  filter(signal == min(signal)) %>%   # Keep the recording with the strongest signal per router
-  ungroup() %>%                                 # Remove grouping to avoid interference
-  group_by(posX, posY) %>%                      # Regroup by position
-  arrange(dist, .by_group = TRUE) %>%           # Sort by distance
-  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
-  slice(1:3)
-#head(test_closestAPs_min)
-#-------------------------------------------------------------------------------#
-# Creates a new data frames showing the 3 closest access points associated with each location 
 # Randomly selecting an orientation (because we don't know where the device will be pointed at)
 test_closestAPs_random <- test_dist %>%
   group_by(posX, posY, mac) %>%                 # Group by position and router
@@ -366,11 +342,8 @@ plot(test_final$signal, test_final$dist, main = "Online Distance vs Signal \n (3
 ## PREDICTION MODELING
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
-
-### DO WE NEED TO NORMALIZE THE PREDICTOR VARIABLES??? (DIST IN THIS CASE) 
-#-------------------------------------------------------------------------------#
-#normalize <- function(x) (x - min(x)) / (max(x) - min(x))
-#train_macX_normalized <- as.data.frame(lapply(macX, normalize))
+## WE DON'T NEED TO NORMALIZE THE PREDICTOR VARIABLES FOR KNN REGRESTION 
+## (THERE IS ONLY ONE PREDICTOR VARIABLE FOR THE MODEL)
 #-------------------------------------------------------------------------------#
 # Load libraries
 # install.packages("FNN")
@@ -539,10 +512,6 @@ compute_least_squares <- function(data) {
   return(results_df)
 }
 
-#-------------------------------------------------------------------------------#
-### CAN I CALCULATE THE RMSE FOR BOTH X AND Y LIKE THIS??
-#-------------------------------------------------------------------------------#
-
 # Function to calculate RMSE
 compute_rmse <- function(results_df) {
   # Calculate the squared differences
@@ -566,13 +535,41 @@ rmse <- compute_rmse(results_df)
 # Print the RMSE
 print(paste("The RMSE of the least squares method is:", round(rmse, 2)))
 
-coord_df <- results_df %>% mutate(loc_coord = paste0("(", posX, ", ", posY, ")"))
+# 1. Histogram of Prediction Errors
+ggplot(results_df, aes(x = dist)) +
+  geom_histogram(bins = 30, fill = "lightblue", color = "black") +
+  geom_vline(aes(xintercept = median(dist)), color = "red", linetype = "dashed", linewidth = 1) +
+  labs(title = "Distribution of Prediction Errors",
+        x = "Error Distance", y = "Frequency") +
+  theme_minimal()
+  
+# 2. Predicted vs Actual Positions with Error Arrows
+ggplot(results_df) +
+  # Actual positions
+  geom_point(aes(x = posX, y = posY, color = "Actual Position"), linewidth = 3, alpha = 0.6) + 
+  # Predicted positions
+  geom_point(aes(x = predX, y = predY, color = "Predicted Position"), linewidth = 3, alpha = 0.6) + 
+  # Arrows between actual and predicted
+  geom_segment(aes(x = posX, y = posY, xend = predX, yend = predY), 
+                arrow = arrow(length = unit(0.2, "cm")), color = "gray") +
+  labs(
+    title = "Predicted vs Actual Positions with Error Arrows",
+    x = "X Coordinate", 
+    y = "Y Coordinate",
+    color = "Legend"  # Title for the legend
+  ) +
+  theme_minimal()
+  
+# 3. Prediction Error Heatmap
+ggplot(results_df, aes(x = posX, y = posY, color = dist)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Prediction Error Heatmap",
+        x = "X Coordinate", y = "Y Coordinate", color = "Error") +
+  theme_minimal()
+  
 
-ggplot(coord_df, aes(x = coord_df$loc_coord, y = coord_df$dist)) +
-  geom_point(color = "green") +
-  geom_boxplot()+
-  theme(axis.text.x = element_text(angle = 90))# Set angle to 90 degrees (Vertical)
-#-------------------------------------------------------------------------------#
+
 
 
 
