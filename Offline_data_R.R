@@ -342,8 +342,10 @@ plot(test_final$signal, test_final$dist, main = "Online Distance vs Signal \n (3
 ## PREDICTION MODELING
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
-## WE DON'T NEED TO NORMALIZE THE PREDICTOR VARIABLES FOR KNN REGRESTION 
+## WE DON'T NEED TO NORMALIZE THE PREDICTOR VARIABLES FOR KNN REGRESSION 
 ## (THERE IS ONLY ONE PREDICTOR VARIABLE FOR THE MODEL)
+#-------------------------------------------------------------------------------#
+### USING TRAIN_FINAL 1,2, OR 3 YOU WILL SEE DIFFERENT RESULTS (IN KNN REGRESSION)
 #-------------------------------------------------------------------------------#
 # Load libraries
 # install.packages("FNN")
@@ -420,9 +422,9 @@ knn_residuals_analysis <- function(train_x, test_x, train_y, test_y, k) {
 
 # Example usage
 # Assuming train_final, test_final, and k are defined
-## NOTE!!! 
-## Use signal for train_final1 and train_final2
-## Use median_signal for train_final3
+### NOTE!!! 
+### Use signal for train_final1 and train_final2
+### Use median_signal for train_final3
 train_x <- train_final3$median_signal
 test_x <- test_final$signal
 train_y <- train_final3$dist
