@@ -140,7 +140,7 @@ train_summary <- train_dist %>%
             .groups = "drop"  # Removes grouping from the resulting data frame
   )%>% # Removes information no longer needed after getting the ouliers
   select(-min_signal,-max_signal,-IQR_signal,-Q1,-Q3,-IQR_min,-IQR_max)
-head(train_summary)
+#head(train_summary)
 #-------------------------------------------------------------------------------#
 # Calculate the angle in radians from device to router
 angle <- atan2(train_summary$macY - train_summary$posY, train_summary$macX - train_summary$posX)
@@ -188,40 +188,48 @@ train_min_adiff <- train_angle_diff %>%
 train_improved_sig_accuracy<- train_angle_diff %>% semi_join(train_min_adiff)
 #print(train_improved_sig_accuracy, n = 18)
 #-------------------------------------------------------------------------------#
-# Creates a new data frames showing the 3 closest access points associated with each location 
+# Summarizes the 110 measurements for each location/orientation group to be able use the median signal
+train_closestAPs_any_orient <- train_summary %>%
+  group_by(posX, posY, dist) 
+#-------------------------------------------------------------------------------#
+# Creates a new data frames showing the 3 closest access points associated with each location (where the device is facing the router)
 train_closestAPs_facing_router <- train_improved_sig_accuracy %>%
   group_by(posX, posY) %>%                      # Regroup by position
   arrange(dist, .by_group = TRUE) %>%           # Sort by distance
   slice(1:3)     
 #print(train_closestAPs_facing_router, n = 18)
 #-------------------------------------------------------------------------------#
-# Looking at 3 closest access points when orientation doesn't matter (8 measurement for each 3 closest routers)
-# Get unique groupings from train_closestAPs_facing_router
-unique_groupings <- train_closestAPs_facing_router %>%
-  select(posX, posY, dist) %>%
-  distinct()
-# Filter rows in Data Frame A based on unique groupings
-train_closestAPs_any_orient <- train_dist %>%
-  inner_join(unique_groupings, by = c("posX", "posY","dist"))
-# View result
-#head(train_closestAPs_any_orient, n = 30)
+# Creates a new data frames showing the 3 closest access points associated with each location (where the signal strength is the best)
+train_closestAPs_max_signal <- train_summary %>%
+  group_by(posX, posY, mac) %>%                 # Group by position and router
+  filter(mean_signal == max(mean_signal)) %>%   # Keep the recording with the strongest signal per router
+  ungroup() %>%                                 # Remove grouping to avoid interference
+  group_by(posX, posY) %>%                      # Regroup by position
+  arrange(dist, .by_group = TRUE) %>%           # Sort by distance
+  distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
+  slice(1:3)      
 #-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
 train_final1 <- train_dist
 train_final2 <- train_closestAPs_any_orient
 train_final3 <- train_closestAPs_facing_router
+train_final4 <- train_closestAPs_max_signal
 #head(train_final1,n = 5, width = Inf)
 #head(train_final2,n = 5,width = Inf)
 #head(train_final3,n = 5,width = Inf)
+#head(train_final4,n = 5,width = Inf)
 #-------------------------------------------------------------------------------#
 # Plot the relationship between signal strength and distance for the entire data set
-plot(train_final1$signal, train_final1$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+plot(train_final1$signal, train_final1$dist, main = "Offline Distance vs Signal \n (all data)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #-------------------------------------------------------------------------------#
 # Plot the relationship between signal strength and distance when noise is removed (for all orientations)
-plot(train_final2$signal, train_final2$dist, main = "Offline Distance vs Signal", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+plot(train_final2$median_signal, train_final2$dist, main = "Offline Distance vs Signal \n (all six routers with all orientions)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #-------------------------------------------------------------------------------#
 # Plot the relationship between signal strength and distance when noise is removed (and the when device is pointed at the router)
-plot(train_final3$median_signal, train_final3$dist, main = "Offline Distance vs Signal \n (Noise Removed)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+plot(train_final3$median_signal, train_final3$dist, main = "Offline Distance vs Signal \n (3 closest routers with device pointed towards router)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
+#-------------------------------------------------------------------------------#
+# Plot the relationship between signal strength and distance when noise is removed (and when the signal strength is the best) 
+plot(train_final4$median_signal, train_final4$dist, main = "Offline Distance vs Signal \n (3 closest routers with best signal strength)", xlab = "Offline_Signal", ylab = "Offline_Distance", pch = 16)
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
 ## LOADING, FORMATTING, AND CLEANING THE ONLINE DATA:
@@ -317,26 +325,40 @@ dist <- round(dist, digits = 2)
 test_dist <- test_orientation %>%
   add_column(dist = dist, .after = 7)
 #-------------------------------------------------------------------------------#
-# Creates a new data frames showing the 3 closest access points associated with each location 
-# Randomly selecting an orientation (because we don't know where the device will be pointed at)
-test_closestAPs_random <- test_dist %>%
+# Consolidates useful information by groups and performs summary statistics   
+test_summary <- test_dist %>%
+  group_by(posX, posY, adj_orient, mac, macX, macY, dist) %>%
+  summarise(mean_signal = mean(signal, na.rm = TRUE),
+            median_signal = median(signal, na.rm = TRUE),
+            sd_signal = sd(signal, na.rm = TRUE),
+            min_signal = min(signal, na.rm = TRUE),
+            max_signal = max(signal, na.rm = TRUE),
+            IQR_signal = IQR(signal, na.rm = TRUE),
+            Q1 = quantile(signal, 0.25, na.rm = TRUE),        
+            Q3 = quantile(signal, 0.75, na.rm = TRUE),
+            IQR_min = Q1 - 1.5 * IQR_signal,          
+            IQR_max = Q3 + 1.5 * IQR_signal,
+            outliers = sum(signal < IQR_min |      # Counts outliers
+                             signal > IQR_max),
+            count = n(),
+            .groups = "drop"  # Removes grouping from the resulting data frame
+  )%>% # Removes information no longer needed after getting the ouliers
+  select(-min_signal,-max_signal,-IQR_signal,-Q1,-Q3,-IQR_min,-IQR_max)
+#head(test_summary)
+#-------------------------------------------------------------------------------#
+# For the three closest routers to each point find the highest median signal value. 
+test_closestAPs_max_signal <- test_summary %>%
   group_by(posX, posY, mac) %>%                 # Group by position and router
-  slice_sample(n = 1) %>%                       # Randomly select one observation per router
+  filter(mean_signal == max(mean_signal)) %>%   # Keep the recording with the strongest medain signal per router
   ungroup() %>%                                 # Remove grouping to avoid interference
   group_by(posX, posY) %>%                      # Regroup by position
   arrange(dist, .by_group = TRUE) %>%           # Sort by distance
   distinct(mac, .keep_all = TRUE) %>%           # Keep only one row per unique router
-  slice(1:3)                                    # Select the top 3 routers for each position
-#head(test_closestAPs_random)
+  slice(1:3)      
 #-------------------------------------------------------------------------------#
 # Rewrites the new information over the original testing data for ease of code
-test_final <- test_closestAPs_random
+test_final <- test_closestAPs_max_signal
 #head(test_final,n = 50, width = Inf)
-#-------------------------------------------------------------------------------#
-plot(test_dist$signal, test_dist$dist, main = "Online Distance vs Signal", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
-#-------------------------------------------------------------------------------#
-plot(test_final$signal, test_final$dist, main = "Online Distance vs Signal \n (3 Closest Routers)", xlab = "Online_Signal", ylab = "Online_Distance", pch = 16)
-#-------------------------------------------------------------------------------#
 #_______________________________________________________________________________#
 #_______________________________________________________________________________#
 ## PREDICTION MODELING
@@ -395,15 +417,13 @@ knn_residuals_analysis <- function(train_x, test_x, train_y, test_y, k) {
     col = "blue"                   # Color of the points
   )
   
-  # Plot histogram of residuals
-  hist(
-    residuals, 
-    breaks = 30,                   # Number of bins
-    main = "Histogram of Residuals",
-    xlab = "Residuals",
-    col = "lightblue",
-    border = "black"
-  )
+  # Create Q-Q plot for residuals
+  qqnorm(residuals, 
+         main = "Q-Q Plot of Residuals", 
+         xlab = "Theoretical Quantiles", 
+         ylab = "Sample Quantiles", 
+         col = "lightblue")
+  qqline(residuals, col = "red", lwd = 2)  # Add reference line in red
   
   # Residuals vs Predicted Values Plot
   plot(
@@ -426,10 +446,10 @@ knn_residuals_analysis <- function(train_x, test_x, train_y, test_y, k) {
 ### Use signal for train_final1 and train_final2
 ### Use median_signal for train_final3
 train_x <- train_final3$median_signal
-test_x <- test_final$signal
+test_x <- test_final$median_signal
 train_y <- train_final3$dist
 test_y <- test_final$dist
-k <- 13
+k <- 19
 
 knn_model <- knn_residuals_analysis(train_x, test_x, train_y, test_y, k)
 #-------------------------------------------------------------------------------#
@@ -538,13 +558,39 @@ rmse <- compute_rmse(results_df)
 print(paste("The RMSE of the least squares method is:", round(rmse, 2)))
 
 # 1. Histogram of Prediction Errors
-ggplot(results_df, aes(x = dist)) +
-  geom_histogram(bins = 30, fill = "lightblue", color = "black") +
-  geom_vline(aes(xintercept = median(dist)), color = "red", linetype = "dashed", linewidth = 1) +
-  labs(title = "Distribution of Prediction Errors",
-        x = "Error Distance", y = "Frequency") +
+# 3. Prediction Error Heatmap
+ggplot(results_df, aes(x = posX, y = posY, color = dist)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Prediction Error Heatmap",
+       x = "X Coordinate", y = "Y Coordinate", color = "Error") +
   theme_minimal()
-  
+
+
+# Step 1: Calculate residuals
+results_df$residualX <- results_df$posX - results_df$predX
+results_df$residualY <- results_df$posY - results_df$predY
+
+# Q-Q Plot of Residuals (X)
+qqnorm(results_df$residualX, main = "Q-Q Plot of Residuals (X)")
+qqline(results_df$residualX, col = "red")
+
+# Q-Q Plot of Residuals (Y)
+qqnorm(results_df$residualY, main = "Q-Q Plot of Residuals (Y)")
+qqline(results_df$residualY, col = "red")
+
+# Histogram of Residuals for X
+ggplot(results_df, aes(x = residualX)) +
+  geom_histogram(color = "black", fill = "lightblue", bins = 20) +
+  labs(title = "Histogram of Residuals (X)", x = "Residual X", y = "Count") +
+  theme_minimal()
+
+# Histogram of Residuals for Y
+ggplot(results_df, aes(x = residualY)) +
+  geom_histogram(color = "black", fill = "lightgreen", bins = 20) +
+  labs(title = "Histogram of Residuals (Y)", x = "Residual Y", y = "Count") +
+  theme_minimal()
+
 # 2. Predicted vs Actual Positions with Error Arrows
 ggplot(results_df) +
   # Actual positions
@@ -570,15 +616,4 @@ ggplot(results_df, aes(x = posX, y = posY, color = dist)) +
         x = "X Coordinate", y = "Y Coordinate", color = "Error") +
   theme_minimal()
   
-
-
-
-
-
-
-
-
-
-
-
 
